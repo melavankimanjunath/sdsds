@@ -38,8 +38,6 @@ EOD;
     protected $paResponse = null;
     private $echoData = null;
     private $shopperId;
-    protected $dfReferenceId = null;
-    private $cusDetails;
 
     /**
      * @var Sapient\Worldpay\Model\XmlBuilder\Config\ThreeDSecure
@@ -78,7 +76,6 @@ EOD;
      * @param string $shippingAddress
      * @param float $billingAddress
      * @param string $shopperId
-     * @param string $cusDetails
      * @return SimpleXMLElement $xml
      */
     public function build(
@@ -94,8 +91,7 @@ EOD;
         $userAgentHeader,
         $shippingAddress,
         $billingAddress,
-        $shopperId,
-        $cusDetails
+        $shopperId
     ) {
         $this->merchantCode = $merchantCode;
         $this->orderCode = $orderCode;
@@ -110,7 +106,6 @@ EOD;
         $this->shippingAddress = $shippingAddress;
         $this->billingAddress = $billingAddress;
         $this->shopperId = $shopperId;
-        $this->cusDetails = $cusDetails;
 
         $xml = new \SimpleXMLElement(self::ROOT_ELEMENT);
         $xml['merchantCode'] = $this->merchantCode;
@@ -152,34 +147,6 @@ EOD;
         $this->_addOrderElement($submit);
         return $xml;
     }
-    
-    /**
-     * Build xml for 3ds2 processing Request
-     *
-     * @param string $merchantCode
-     * @param string $orderCode
-     * @param array $paymentDetails
-     * @param $dfReferenceId
-     * @return SimpleXMLElement $xml
-     */
-    public function build3Ds2Secure(
-        $merchantCode,
-        $orderCode,
-        $paymentDetails,
-        $dfReferenceId
-    ) {
-        $this->merchantCode = $merchantCode;
-        $this->dfReferenceId = $dfReferenceId;
-        $this->orderCode = $orderCode;
-        $this->paymentDetails = $paymentDetails;
-        $xml = new \SimpleXMLElement(self::ROOT_ELEMENT);
-        $xml['merchantCode'] = $this->merchantCode;
-        $xml['version'] = '1.4';
-
-        $submit = $this->_addSubmitElement($xml);
-        $this->_addOrderElement($submit);
-        return $xml;
-    }
 
     /**
      * Add submit tag to xml
@@ -209,35 +176,22 @@ EOD;
             $session['id'] = $this->paymentDetails['sessionId'];
             return $order;
         }
-        if ($this->dfReferenceId) {
-            $info3DSecure = $order->addChild('info3DSecure');
-            $info3DSecure->addChild('completedAuthentication');
-            $session = $order->addChild('session');
-            $session['id'] = $this->paymentDetails['sessionId'];
-            return $order;
-        }
         $this->_addDescriptionElement($order);
         $this->_addAmountElement($order);
         $this->_addPaymentDetailsElement($order);
         $this->_addShopperElement($order);
         $this->_addShippingElement($order);
         $this->_addBillingElement($order);
+
+
         if ($this->echoData) {
             $order->addChild('echoData', $this->echoData);
         }
+
         $this->_addDynamic3DSElement($order);
         $this->_addCreateTokenElement($order);
         $this->_addDynamicInteractionTypeElement($order);
-        
-        
-        $cusAndRiskData = $this->cusDetails;
-        if($this->shopperId && $cusAndRiskData['is_risk_data_enabled']){
-        $this->_addCustomerRiskData($order);
-        }elseif($cusAndRiskData['is_risk_data_enabled']) {
-        $this->_addRiskData($order);
-        }
-        
-        $this->_addAdditional3DsElement($order);
+
        return $order;
     }
 
@@ -528,99 +482,6 @@ EOD;
 
         $countryCodeElement = $address->addChild('countryCode');
         $this->_addCDATA($countryCodeElement, $countryCode);
-    }
-    
-    
-    
-    /**
-     * Add Customer Risk Data  and its child tag to xml
-     * @param SimpleXMLElement $order 
-     */
-    protected function _addCustomerRiskData($order)
-    {
-        $riskData = $order->addChild('riskData');
-        
-        
-        //Authentication risk data
-        $authenticationRiskData = $riskData->addChild('authenticationRiskData');
-        $authenticationRiskData['authenticationMethod'] = 'localAccount';
-        $authenticationTimestampElement = $authenticationRiskData->addChild('authenticationTimestamp');
-        $dateElement = $authenticationTimestampElement->addChild('date');
-        $dateElement['second'] = date("s");
-        $dateElement['minute'] = date("i");
-        $dateElement['hour'] = date("H");
-        $dateElement['dayOfMonth'] = date("d");
-        $dateElement['month'] = date("m");
-        $dateElement['year'] = date("Y");
-        
-        
-        //shoppper account risk data
-        $shopperAccountRiskData = $riskData->addChild('shopperAccountRiskData');
-        $shopperAccountRiskDataElement = $shopperAccountRiskData->addChild('shopperAccountCreationDate');
-        $shopperAccountRiskDataElementChild = $shopperAccountRiskDataElement->addChild('date');
-        
-        
-        $accountCreatedDate = strtotime($this->cusDetails['created_at']);
-        
-        $shopperAccountRiskDataElementChild['dayOfMonth'] = date("d", $accountCreatedDate);
-        $shopperAccountRiskDataElementChild['month'] = date("m", $accountCreatedDate);
-        $shopperAccountRiskDataElementChild['year'] = date("Y", $accountCreatedDate);
-        
-        
-        $shopperAccountRiskDataElement1 = $shopperAccountRiskData->addChild('shopperAccountModificationDate');
-        $shopperAccountRiskDataElementChild1 = $shopperAccountRiskDataElement1->addChild('date');
-        
-        
-        $accountUpdatedDate = strtotime($this->cusDetails['updated_at']);
-        
-        $shopperAccountRiskDataElementChild1['dayOfMonth'] = date("d", $accountUpdatedDate);
-        $shopperAccountRiskDataElementChild1['month'] = date("m", $accountUpdatedDate);
-        $shopperAccountRiskDataElementChild1['year'] = date("Y", $accountUpdatedDate);
-        
-        return $riskData;
-    }
-    
-    
-    
-    
-    /**
-     * Add  Risk Data  and its child tag to xml
-     * @param SimpleXMLElement $order 
-     */
-    protected function _addRiskData($order)
-    {
-        $riskData = $order->addChild('riskData');
-        
-        
-        //Authentication risk data
-        $authenticationRiskData = $riskData->addChild('authenticationRiskData');
-        $authenticationRiskData['authenticationMethod'] = 'localAccount';
-        $authenticationTimestampElement = $authenticationRiskData->addChild('authenticationTimestamp');
-        $dateElement = $authenticationTimestampElement->addChild('date');
-        $dateElement['second'] = date("s");
-        $dateElement['minute'] = date("i");
-        $dateElement['hour'] = date("H");
-        $dateElement['dayOfMonth'] = date("d");
-        $dateElement['month'] = date("m");
-        $dateElement['year'] = date("Y");
-        
-        return $riskData;
-    }
-    
-    /**
-     * Add Additional3Ds data and its child tag to xml
-     * @param SimpleXMLElement $order 
-     */
-    protected function _addAdditional3DsElement($order)
-    {
-        $dfReferenceId = isset($this->paymentDetails['dfReferenceId']) ? $this->paymentDetails['dfReferenceId'] : '';
-        if($dfReferenceId){
-            $addisional3DsElement = $order->addChild('additional3DSData');
-            $addisional3DsElement['dfReferenceId'] = $this->paymentDetails['dfReferenceId'];
-            $addisional3DsElement['challengeWindowSize'] = "390x400";
-            $addisional3DsElement['challengePreference'] = "challengeMandated";
-            return $addisional3DsElement;
-        }
     }
 
     /**
